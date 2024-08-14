@@ -1,27 +1,36 @@
-'use strict'
-const t = require('tap')
-const u = require('../lib/update.js')
-const path = require('path')
-const fs = require('fs')
-const mutateFS = require('mutate-fs')
+import t from 'tap'
+import { update as u } from '../dist/esm/update.js'
 
-const {resolve} = require('path')
+import path, { dirname } from 'path'
+import fs from 'fs'
+import mutateFS from 'mutate-fs'
+
+import { resolve } from 'path'
+import { fileURLToPath } from 'url'
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 const fixtures = path.resolve(__dirname, 'fixtures')
 const tars = path.resolve(fixtures, 'tars')
-const zlib = require('zlib')
-
-const spawn = require('child_process').spawn
+import zlib from 'zlib'
+import { spawn } from 'child_process'
 
 const data = fs.readFileSync(tars + '/body-byte-counts.tar')
-const dataNoNulls = data.slice(0, data.length - 1024)
+const dataNoNulls = data.subarray(0, data.length - 1024)
 const fixtureDef = {
   'body-byte-counts.tar': data,
   'no-null-eof.tar': dataNoNulls,
-  'truncated-head.tar': Buffer.concat([dataNoNulls, data.slice(0, 500)]),
-  'truncated-body.tar': Buffer.concat([dataNoNulls, data.slice(0, 700)]),
+  'truncated-head.tar': Buffer.concat([
+    dataNoNulls,
+    data.subarray(0, 500),
+  ]),
+  'truncated-body.tar': Buffer.concat([
+    dataNoNulls,
+    data.subarray(0, 700),
+  ]),
   'zero.tar': Buffer.from(''),
   'empty.tar': Buffer.alloc(512),
   'compressed.tgz': zlib.gzipSync(data),
+  'compressed.tbr': zlib.brotliCompressSync(data),
 }
 
 t.test('basic file add to archive (good or truncated)', t => {
@@ -32,7 +41,10 @@ t.test('basic file add to archive (good or truncated)', t => {
     c.on('close', (code, signal) => {
       t.equal(code, 0)
       t.equal(signal, null)
-      const actual = Buffer.concat(out).toString().trim().split(/\r?\n/)
+      const actual = Buffer.concat(out)
+        .toString()
+        .trim()
+        .split(/\r?\n/)
       t.same(actual, [
         '1024-bytes.txt',
         '512-bytes.txt',
@@ -50,21 +62,26 @@ t.test('basic file add to archive (good or truncated)', t => {
     'truncated-head.tar',
     'truncated-body.tar',
   ]
-  const td = files.map(f => [f, fixtureDef[f]]).reduce((s, [k, v]) => {
-    s[k] = v
-    return s
-  }, {})
+  const td = files
+    .map(f => [f, fixtureDef[f]])
+    .reduce((s, [k, v]) => {
+      s[k] = v
+      return s
+    }, {})
   const fileList = [path.basename(__filename)]
   t.test('sync', t => {
     t.plan(files.length)
     const dir = t.testdir(td)
     for (const file of files) {
       t.test(file, t => {
-        u({
-          sync: true,
-          file: resolve(dir, file),
-          cwd: __dirname,
-        }, fileList)
+        u(
+          {
+            sync: true,
+            file: resolve(dir, file),
+            cwd: __dirname,
+          },
+          fileList,
+        )
         check(resolve(dir, file), t)
       })
     }
@@ -75,14 +92,19 @@ t.test('basic file add to archive (good or truncated)', t => {
     const dir = t.testdir(td)
     for (const file of files) {
       t.test(file, t => {
-        u({
-          file: resolve(dir, file),
-          cwd: __dirname,
-        }, fileList, er => {
-          if (er)
-            throw er
-          check(resolve(dir, file), t)
-        })
+        u(
+          {
+            file: resolve(dir, file),
+            cwd: __dirname,
+          },
+          fileList,
+          er => {
+            if (er) {
+              throw er
+            }
+            check(resolve(dir, file), t)
+          },
+        )
       })
     }
   })
@@ -92,10 +114,13 @@ t.test('basic file add to archive (good or truncated)', t => {
     const dir = t.testdir(td)
     for (const file of files) {
       t.test(file, t => {
-        u({
-          file: resolve(dir, file),
-          cwd: __dirname,
-        }, fileList).then(() => {
+        u(
+          {
+            file: resolve(dir, file),
+            cwd: __dirname,
+          },
+          fileList,
+        ).then(() => {
           check(resolve(dir, file), t)
         })
       })
@@ -113,22 +138,22 @@ t.test('add to empty archive', t => {
     c.on('close', (code, signal) => {
       t.equal(code, 0)
       t.equal(signal, null)
-      const actual = Buffer.concat(out).toString().trim().split(/\r?\n/)
-      t.same(actual, [
-        path.basename(__filename),
-      ])
+      const actual = Buffer.concat(out)
+        .toString()
+        .trim()
+        .split(/\r?\n/)
+      t.same(actual, [path.basename(__filename)])
       t.end()
     })
   }
 
-  const files = [
-    'empty.tar',
-    'zero.tar',
-  ]
-  const td = files.map(f => [f, fixtureDef[f]]).reduce((s, [k, v]) => {
-    s[k] = v
-    return s
-  }, {})
+  const files = ['empty.tar', 'zero.tar']
+  const td = files
+    .map(f => [f, fixtureDef[f]])
+    .reduce((s, [k, v]) => {
+      s[k] = v
+      return s
+    }, {})
   files.push('not-existing.tar')
 
   t.test('sync', t => {
@@ -136,11 +161,14 @@ t.test('add to empty archive', t => {
     t.plan(files.length)
     for (const file of files) {
       t.test(file, t => {
-        u({
-          sync: true,
-          file: resolve(dir, file),
-          cwd: __dirname,
-        }, [path.basename(__filename)])
+        u(
+          {
+            sync: true,
+            file: resolve(dir, file),
+            cwd: __dirname,
+          },
+          [path.basename(__filename)],
+        )
         check(resolve(dir, file), t)
       })
     }
@@ -151,14 +179,19 @@ t.test('add to empty archive', t => {
     t.plan(files.length)
     for (const file of files) {
       t.test(file, t => {
-        u({
-          file: resolve(dir, file),
-          cwd: __dirname,
-        }, [path.basename(__filename)], er => {
-          if (er)
-            throw er
-          check(resolve(dir, file), t)
-        })
+        u(
+          {
+            file: resolve(dir, file),
+            cwd: __dirname,
+          },
+          [path.basename(__filename)],
+          er => {
+            if (er) {
+              throw er
+            }
+            check(resolve(dir, file), t)
+          },
+        )
       })
     }
   })
@@ -168,10 +201,13 @@ t.test('add to empty archive', t => {
     t.plan(files.length)
     for (const file of files) {
       t.test(file, t => {
-        u({
-          file: resolve(dir, file),
-          cwd: __dirname,
-        }, [path.basename(__filename)]).then(() => {
+        u(
+          {
+            file: resolve(dir, file),
+            cwd: __dirname,
+          },
+          [path.basename(__filename)],
+        ).then(() => {
           check(resolve(dir, file), t)
         })
       })
@@ -188,33 +224,95 @@ t.test('cannot append to gzipped archives', t => {
   const file = resolve(dir, 'compressed.tgz')
 
   const expect = new Error('cannot append to compressed archives')
-  const expectT = new TypeError('cannot append to compressed archives')
+  const expectT = new TypeError(
+    'cannot append to compressed archives',
+  )
 
-  t.throws(_ => u({
-    file,
-    cwd: __dirname,
-    gzip: true,
-  }, [path.basename(__filename)]), expectT)
+  t.throws(
+    _ =>
+      u(
+        {
+          file,
+          cwd: __dirname,
+          gzip: true,
+        },
+        [path.basename(__filename)],
+      ),
+    expectT,
+  )
 
-  t.throws(_ => u({
-    file,
-    cwd: __dirname,
-    sync: true,
-  }, [path.basename(__filename)]), expect)
+  t.throws(
+    _ =>
+      u(
+        {
+          file,
+          cwd: __dirname,
+          sync: true,
+        },
+        [path.basename(__filename)],
+      ),
+    expect,
+  )
 
-  u({
-    file,
-    cwd: __dirname,
-  }, [path.basename(__filename)], er => {
-    t.match(er, expect)
-    t.end()
+  u(
+    {
+      file,
+      cwd: __dirname,
+    },
+    [path.basename(__filename)],
+    er => {
+      t.match(er, expect)
+      t.end()
+    },
+  )
+})
+
+t.test('cannot append to brotli archives', t => {
+  const dir = t.testdir({
+    'compressed.tbr': fixtureDef['compressed.tbr'],
   })
+  const file = resolve(dir, 'compressed.tbr')
+
+  const expect = new Error('cannot append to compressed archives')
+  const expectT = new TypeError(
+    'cannot append to compressed archives',
+  )
+
+  t.throws(
+    _ =>
+      u(
+        {
+          file,
+          cwd: __dirname,
+          brotli: true,
+        },
+        [path.basename(__filename)],
+      ),
+    expectT,
+  )
+
+  t.throws(
+    _ =>
+      u(
+        {
+          file,
+          cwd: __dirname,
+          sync: true,
+        },
+        [path.basename(__filename)],
+      ),
+    expect,
+  )
+
+  t.end()
 })
 
 t.test('other throws', t => {
   t.throws(_ => u({}, ['asdf']), new TypeError('file is required'))
-  t.throws(_ => u({file: 'asdf'}, []),
-    new TypeError('no files or directories specified'))
+  t.throws(
+    _ => u({ file: 'asdf' }, []),
+    new TypeError('no paths specified to add/replace'),
+  )
   t.end()
 })
 
@@ -290,13 +388,16 @@ t.test('do not add older file', t => {
   }
 
   t.test('sync', t => {
-    u({
-      mtimeCache: new Map(),
-      file,
-      cwd: dir,
-      sync: true,
-      filter: path => path === '1024-bytes.txt',
-    }, ['1024-bytes.txt', 'foo'])
+    u(
+      {
+        mtimeCache: new Map(),
+        file,
+        cwd: dir,
+        sync: true,
+        filter: path => path === '1024-bytes.txt',
+      },
+      ['1024-bytes.txt', 'foo'],
+    )
     check(t)
   })
 
@@ -306,8 +407,9 @@ t.test('do not add older file', t => {
 
   t.test('async cb', t => {
     u({ file, cwd: dir }, ['1024-bytes.txt'], er => {
-      if (er)
+      if (er) {
         throw er
+      }
       check(t)
     })
   })
@@ -330,7 +432,8 @@ t.test('do add newer file', t => {
   }
 
   // a chunk for the header, then 2 for the body
-  const expect = fixtureDef['body-byte-counts.tar'].length + 512 + 1024
+  const expect =
+    fixtureDef['body-byte-counts.tar'].length + 512 + 1024
   const check = (file, t) => {
     t.equal(fs.statSync(file).size, expect)
     t.end()
@@ -339,28 +442,34 @@ t.test('do add newer file', t => {
   t.test('sync', t => {
     const dir = setup(t)
     const file = resolve(dir, 'body-byte-counts.tar')
-    u({
-      mtimeCache: new Map(),
-      file,
-      cwd: dir,
-      sync: true,
-      filter: path => path === '1024-bytes.txt',
-    }, ['1024-bytes.txt', 'foo'])
+    u(
+      {
+        mtimeCache: new Map(),
+        file,
+        cwd: dir,
+        sync: true,
+        filter: path => path === '1024-bytes.txt',
+      },
+      ['1024-bytes.txt', 'foo'],
+    )
     check(file, t)
   })
 
   t.test('async', t => {
     const dir = setup(t)
     const file = resolve(dir, 'body-byte-counts.tar')
-    u({ file, cwd: dir }, ['1024-bytes.txt']).then(_ => check(file, t))
+    u({ file, cwd: dir }, ['1024-bytes.txt']).then(_ =>
+      check(file, t),
+    )
   })
 
   t.test('async cb', t => {
     const dir = setup(t)
     const file = resolve(dir, 'body-byte-counts.tar')
     u({ file, cwd: dir }, ['1024-bytes.txt'], er => {
-      if (er)
+      if (er) {
         throw er
+      }
       check(file, t)
     })
   })
